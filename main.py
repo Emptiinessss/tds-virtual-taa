@@ -1,59 +1,31 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 import base64
 import json
 
-app = FastAPI()
-
-# Enable CORS (important for cross-origin requests)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Health check route
-@app.get("/")
-def read_root():
-    return {"message": "Hello from TDS Virtual TA!"}
-
-# Load the knowledge base
-with open("tds-knowledge-base.json", "r", encoding="utf-8") as f:
+# Load knowledge base
+with open("tds-knowledge-base.json", "r") as f:
     knowledge_base = json.load(f)
 
-# Define the input model
+app = FastAPI()
+
+# Request format
 class QuestionRequest(BaseModel):
     question: str
-    image: Optional[str] = None  # base64 encoded image
+    image: str = None  # base64 encoded image (optional)
 
-# Find relevant knowledge base entries (basic match)
-def find_relevant_entries(question):
-    matches = []
+# Response format
+class AnswerResponse(BaseModel):
+    answer: str
+
+@app.post("/api/", response_model=AnswerResponse)
+def get_answer(data: QuestionRequest):
+    question = data.question.lower()
+
+    # 🔍 Simple keyword search in the knowledge base
     for item in knowledge_base:
-        content = item.get("markdown", "") + item.get("content", "")
-        if any(word.lower() in content.lower() for word in question.split()):
-            matches.append(item)
-        if len(matches) >= 2:
-            break
-    return matches
+        if question in item["content"].lower():
+            return {"answer": item["content"]}
 
-# POST endpoint to handle question
-@app.post("/api/")
-def answer_question(req: QuestionRequest):
-    relevant = find_relevant_entries(req.question)
-
-    links = []
-    for item in relevant:
-        links.append({
-            "url": item.get("url", "https://example.com"),
-            "text": item.get("content", item.get("markdown", ""))[:100]
-        })
-
-    return {
-        "answer": f"This is a placeholder answer for: '{req.question}'",
-        "links": links
-    }
+    # 🧠 If no exact match, fallback dummy answer
+    return {"answer": "Sorry, I couldn't find an exact match. Please contact a TA for help."}
