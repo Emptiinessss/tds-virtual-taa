@@ -1,19 +1,13 @@
 from fastapi import FastAPI, UploadFile, File
-from pydantic import BaseModel
-from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
 import base64
 import json
-import uvicorn
-import os
-
-# Load knowledge base
-with open("tds-knowledge-base.json", "r", encoding="utf-8") as f:
-    knowledge_base = json.load(f)
 
 app = FastAPI()
 
-# Allow cross-origin requests
+# Enable CORS (optional but helpful)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,36 +16,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Load the knowledge base
+with open("tds-knowledge-base.json", "r", encoding="utf-8") as f:
+    knowledge_base = json.load(f)
+
+# Health check route
+@app.get("/")
+def read_root():
+    return {"message": "Hello from TDS Virtual TA!"}
+
+# Request model
 class QuestionRequest(BaseModel):
     question: str
-    image: Optional[str] = None  # base64 image if provided
+    image: Optional[str] = None  # base64 encoded image string
 
-@app.post("/api/")
-async def answer_question(request: QuestionRequest):
-    user_question = request.question.lower()
-
-    # Simple keyword search
-    relevant = []
+# Dummy similarity matching (replace with real one later)
+def find_relevant_entries(question):
+    matches = []
     for item in knowledge_base:
-        content = (item.get("summary") or "") + " " + (item.get("content_snippet") or "")
-        if user_question in content.lower():
-            relevant.append({
-                "url": item.get("url", ""),
-                "text": item.get("summary", item.get("content_snippet", "")[:200])
-            })
-            if len(relevant) >= 2:
-                break
+        if any(word.lower() in item.get("content", "").lower() for word in question.split()):
+            matches.append(item)
+        if len(matches) >= 2:
+            break
+    return matches
 
-    answer = (
-        "Here's what I found that may help with your question. "
-        "Please review the links and summaries below."
-    ) if relevant else "Sorry, I couldn’t find a direct answer. Please try rephrasing or check Discourse for updates."
+# POST route to handle questions
+@app.post("/api/")
+def answer_question(req: QuestionRequest):
+    relevant = find_relevant_entries(req.question)
+
+    links = []
+    for item in relevant:
+        links.append({
+            "url": item.get("url", "https://example.com"),
+            "text": item.get("content", "")[:100]
+        })
 
     return {
-        "answer": answer,
-        "links": relevant
+        "answer": f"This is a placeholder answer for: '{req.question}'",
+        "links": links
     }
-
-# For local testing
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
